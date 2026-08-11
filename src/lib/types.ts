@@ -88,13 +88,13 @@ export interface WeatherBundle {
 
 export interface SoilInfo {
   available: boolean;
-  phh2o?: number;
-  clay?: number;
-  sand?: number;
-  soc?: number;
-  texture?: string;
+  phh2o?: number | undefined;
+  clay?: number | undefined;
+  sand?: number | undefined;
+  soc?: number | undefined;
+  texture?: string | undefined;
   source: "SoilGrids (ISRIC)" | "DEMO" | "unavailable";
-  note?: string;
+  note?: string | undefined;
 }
 
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "CRITICAL";

@@ -3,10 +3,19 @@ import type { ForecastDay, GeoLocation, HourPoint, SoilInfo, WeatherBundle } fro
 const cache = new Map<string, { at: number; data: unknown }>();
 const TTL = 10 * 60 * 1000;
 
+function num(arr: (number | string)[] | undefined, i: number): number {
+  const v = arr?.[i];
+  return typeof v === "number" ? v : Number(v ?? 0) || 0;
+}
+
+function str(arr: (number | string)[] | undefined, i: number): string {
+  return String(arr?.[i] ?? "");
+}
+
 async function cachedJson<T>(key: string, url: string, signal?: AbortSignal): Promise<T> {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.data as T;
-  const res = await fetch(url, { signal });
+  const res = await fetch(url, signal ? { signal } : {});
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
   const data = (await res.json()) as T;
   cache.set(key, { at: Date.now(), data });
@@ -56,15 +65,15 @@ export function demoWeather(): WeatherBundle {
   });
   return {
     now: {
-      temperature: hourly[0].temperature,
-      humidity: hourly[0].humidity,
+      temperature: hourly[0]?.temperature ?? 0,
+      humidity: hourly[0]?.humidity ?? 0,
       rainfall: 1.8,
       precipitationProbability: 72,
       windSpeed: 11.4,
       uv: 6.1,
       cloudCover: 84,
       isDay: true,
-      time: hourly[0].time,
+      time: hourly[0]?.time ?? start.toISOString(),
     },
     hourly,
     daily,
@@ -98,30 +107,30 @@ export async function fetchWeather(
     (raw.hourly["time"] as string[]).findIndex((t) => new Date(t).getTime() >= Date.now() - 3600_000),
   );
 
-  const hourly: HourPoint[] = (raw.hourly["time"] as string[])
+  const hourly: HourPoint[] = ((raw.hourly["time"] as string[]) ?? [])
     .slice(nowIdx, nowIdx + 72)
     .map((t, i) => {
       const k = nowIdx + i;
       return {
         time: t,
-        temperature: Number(raw.hourly["temperature_2m"][k] ?? 0),
-        humidity: Number(raw.hourly["relative_humidity_2m"][k] ?? 0),
-        precipProb: Number(raw.hourly["precipitation_probability"][k] ?? 0),
-        rain: Number(raw.hourly["rain"][k] ?? 0),
-        wind: Number(raw.hourly["wind_speed_10m"][k] ?? 0),
+        temperature: num(raw.hourly["temperature_2m"], k),
+        humidity: num(raw.hourly["relative_humidity_2m"], k),
+        precipProb: num(raw.hourly["precipitation_probability"], k),
+        rain: num(raw.hourly["rain"], k),
+        wind: num(raw.hourly["wind_speed_10m"], k),
       };
     });
 
-  const daily: ForecastDay[] = (raw.daily["time"] as string[]).map((d, i) => ({
+  const daily: ForecastDay[] = ((raw.daily["time"] as string[]) ?? []).map((d, i) => ({
     date: d,
-    tempMax: Number(raw.daily["temperature_2m_max"][i] ?? 0),
-    tempMin: Number(raw.daily["temperature_2m_min"][i] ?? 0),
-    rainSum: Number(raw.daily["precipitation_sum"][i] ?? 0),
-    precipProbMax: Number(raw.daily["precipitation_probability_max"][i] ?? 0),
-    windMax: Number(raw.daily["wind_speed_10m_max"][i] ?? 0),
-    uvMax: Number(raw.daily["uv_index_max"][i] ?? 0),
-    sunrise: String(raw.daily["sunrise"][i] ?? ""),
-    sunset: String(raw.daily["sunset"][i] ?? ""),
+    tempMax: num(raw.daily["temperature_2m_max"], i),
+    tempMin: num(raw.daily["temperature_2m_min"], i),
+    rainSum: num(raw.daily["precipitation_sum"], i),
+    precipProbMax: num(raw.daily["precipitation_probability_max"], i),
+    windMax: num(raw.daily["wind_speed_10m_max"], i),
+    uvMax: num(raw.daily["uv_index_max"], i),
+    sunrise: str(raw.daily["sunrise"], i),
+    sunset: str(raw.daily["sunset"], i),
   }));
 
   return {
@@ -216,7 +225,7 @@ export async function fetchSoil(lat: number, lon: number): Promise<SoilInfo> {
       properties?: { layers?: { name: string; depths: { values: { mean: number | null } }[] }[] };
     }>(`s:${lat.toFixed(2)},${lon.toFixed(2)}`, url);
     const layers = data.properties?.layers ?? [];
-    const pick = (n: string) => {
+    const pick = (n: string): number | undefined => {
       const v = layers.find((l) => l.name === n)?.depths?.[0]?.values?.mean;
       return v === null || v === undefined ? undefined : v;
     };
@@ -225,15 +234,14 @@ export async function fetchSoil(lat: number, lon: number): Promise<SoilInfo> {
     const sand = pick("sand");
     const soc = pick("soc");
     if (ph === undefined && clay === undefined) throw new Error("no data");
-    return {
-      available: true,
-      phh2o: ph !== undefined ? Math.round((ph / 10) * 10) / 10 : undefined,
-      clay: clay !== undefined ? Math.round(clay / 10) : undefined,
-      sand: sand !== undefined ? Math.round(sand / 10) : undefined,
-      soc: soc !== undefined ? Math.round(soc / 10) / 10 : undefined,
-      texture: textureOf(clay !== undefined ? clay / 10 : undefined, sand !== undefined ? sand / 10 : undefined),
-      source: "SoilGrids (ISRIC)",
-    };
+    const out: SoilInfo = { available: true, source: "SoilGrids (ISRIC)" };
+    if (ph !== undefined) out.phh2o = Math.round(ph) / 10;
+    if (clay !== undefined) out.clay = Math.round(clay / 10);
+    if (sand !== undefined) out.sand = Math.round(sand / 10);
+    if (soc !== undefined) out.soc = Math.round(soc / 10) / 10;
+    const tex = textureOf(clay === undefined ? undefined : clay / 10, sand === undefined ? undefined : sand / 10);
+    if (tex) out.texture = tex;
+    return out;
   } catch {
     return {
       available: false,
