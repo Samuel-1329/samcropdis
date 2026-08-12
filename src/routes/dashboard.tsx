@@ -138,6 +138,10 @@ function DashboardShell() {
         </nav>
 
         <main className="min-w-0 flex-1 space-y-5">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {t("brand")} Dashboard
+          </h1>
+
           <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
             {TABS.map((s) => (
               <button
